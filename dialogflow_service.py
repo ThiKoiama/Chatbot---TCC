@@ -4,7 +4,8 @@ import os
 class DialogflowService:
     def __init__(self):
         # Coloque aqui o caminho para o arquivo de credenciais do Dialogflow
-   
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "./chatbottcc2024-62bc71ec7291.json"
+        self.project_id = 'chatbottcc2024'
         self.session_client = dialogflow.SessionsClient()
 
     def detect_intent_text(self, text, session_id='12345'):

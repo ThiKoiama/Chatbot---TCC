@@ -1,7 +1,7 @@
 import os
 import csv
 import torch
-from transformers import BlenderbotTokenizer, BlenderbotForConditionalGeneration, AdamW, AutoModelForCausalLM, AutoTokenizer
+from transformers import BlenderbotTokenizer, BlenderbotForConditionalGeneration, AdamW
 from torch.utils.data import DataLoader, Dataset
 
 class CustomDataset(Dataset):
@@ -24,14 +24,14 @@ class CustomDataset(Dataset):
             'attention_mask': inputs['attention_mask'].squeeze(), 
             'labels': labels.squeeze()
         }
-#./models/fine_tuned_model
+
 class NLPService:
     def __init__(self, model_name='facebook/blenderbot-400M-distill'):
         self.device = torch.device("cpu")
         self.model_name = model_name
         self.model = BlenderbotForConditionalGeneration.from_pretrained(model_name).to(self.device)
         self.tokenizer = BlenderbotTokenizer.from_pretrained(model_name)
-        
+        self.fine_tuned_model_path = './models/fine_tuned_model'
 
     def generate_answer(self, question):
         csv_answer = self.search_in_csv(question)
@@ -57,12 +57,12 @@ class NLPService:
         questions, answers = self.load_data_from_csv('data/faq_devs.csv')
         
         if len(questions) >= 10:
-            fine_tune_result = self.fine_tune_model('data/faq_devs.csv', 'models/fine_tuned_model')
+            fine_tune_result = self.fine_tune_model('data/faq_devs.csv')
             return f"Pergunta e resposta salvas no CSV. {fine_tune_result}"
         
         return "Pergunta e resposta salvas no CSV. O modelo será treinado posteriormente."
 
-    def fine_tune_model(self, csv_path='data/faq_devs.csv', save_path='models/fine_tuned_model'):
+    def fine_tune_model(self, csv_path='data/faq_devs.csv'):
         questions, answers = self.load_data_from_csv(csv_path)
 
         if len(questions) < 10:
@@ -73,7 +73,7 @@ class NLPService:
         optimizer = AdamW(self.model.parameters(), lr=5e-5)
         self.model.train()
 
-        for epoch in range(3):
+        for epoch in range(10):
             for batch in dataloader:
                 input_ids = batch['input_ids'].to(self.device)
                 attention_mask = batch['attention_mask'].to(self.device)
@@ -85,13 +85,25 @@ class NLPService:
                 optimizer.step()
                 optimizer.zero_grad()
 
-        if not os.path.exists(save_path):
-            os.makedirs(save_path)
-        
         # Salva o modelo após o fine-tuning
-        self.model.save_pretrained(save_path)
-        self.tokenizer.save_pretrained(save_path)
+        if not os.path.exists(self.fine_tuned_model_path):
+            os.makedirs(self.fine_tuned_model_path)
+        
+        self.model.save_pretrained(self.fine_tuned_model_path)
+        self.tokenizer.save_pretrained(self.fine_tuned_model_path)
+
+        # Troca para o modelo fine-tuned
+        self.switch_to_fine_tuned_model()
+
         return "Modelo ajustado e salvo com sucesso."
+
+    def switch_to_fine_tuned_model(self):
+        if os.path.exists(self.fine_tuned_model_path):
+            self.model = BlenderbotForConditionalGeneration.from_pretrained(self.fine_tuned_model_path).to(self.device)
+            self.tokenizer = BlenderbotTokenizer.from_pretrained(self.fine_tuned_model_path)
+            self.model_name = self.fine_tuned_model_path  # Atualiza o nome do modelo
+            print("Modelo trocado para o fine-tuned.")
+            print(f"Modelo atual: {self.model_name}") 
 
     def load_data_from_csv(self, csv_path):
         questions = []

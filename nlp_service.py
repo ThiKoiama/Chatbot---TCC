@@ -1,0 +1,119 @@
+import os
+import csv
+import torch
+from transformers import BlenderbotTokenizer, BlenderbotForConditionalGeneration, AdamW, AutoModelForCausalLM, AutoTokenizer
+from torch.utils.data import DataLoader, Dataset
+
+class CustomDataset(Dataset):
+    def __init__(self, tokenizer, questions, answers, max_length=128):
+        self.tokenizer = tokenizer
+        self.questions = questions
+        self.answers = answers
+        self.max_length = max_length
+
+    def __len__(self):
+        return len(self.questions)
+
+    def __getitem__(self, idx):
+        question = self.questions[idx]
+        answer = self.answers[idx]
+        inputs = self.tokenizer(question, truncation=True, padding="max_length", max_length=self.max_length, return_tensors="pt")
+        labels = self.tokenizer(answer, truncation=True, padding="max_length", max_length=self.max_length, return_tensors="pt").input_ids
+        return {
+            'input_ids': inputs['input_ids'].squeeze(), 
+            'attention_mask': inputs['attention_mask'].squeeze(), 
+            'labels': labels.squeeze()
+        }
+#./models/fine_tuned_model
+class NLPService:
+    def __init__(self, model_name='facebook/blenderbot-400M-distill'):
+        self.device = torch.device("cpu")
+        self.model_name = model_name
+        self.model = BlenderbotForConditionalGeneration.from_pretrained(model_name).to(self.device)
+        self.tokenizer = BlenderbotTokenizer.from_pretrained(model_name)
+        
+
+    def generate_answer(self, question):
+        csv_answer = self.search_in_csv(question)
+        if csv_answer:
+            return csv_answer
+        
+        inputs = self.tokenizer(question, return_tensors="pt").to(self.device)
+        output = self.model.generate(
+            inputs['input_ids'],
+            max_length=150,
+            num_return_sequences=1,
+            temperature=0.2,
+            top_p=0.9,       
+            do_sample=True 
+        )
+        return self.tokenizer.decode(output[0], skip_special_tokens=True)
+
+    def train_with_input(self, question, answer):
+        with open('data/faq_devs.csv', mode='a', newline='', encoding='utf-8') as file:
+            writer = csv.writer(file, quoting=csv.QUOTE_ALL) 
+            writer.writerow([question, answer])
+
+        questions, answers = self.load_data_from_csv('data/faq_devs.csv')
+        
+        if len(questions) >= 10:
+            fine_tune_result = self.fine_tune_model('data/faq_devs.csv', 'models/fine_tuned_model')
+            return f"Pergunta e resposta salvas no CSV. {fine_tune_result}"
+        
+        return "Pergunta e resposta salvas no CSV. O modelo será treinado posteriormente."
+
+    def fine_tune_model(self, csv_path='data/faq_devs.csv', save_path='models/fine_tuned_model'):
+        questions, answers = self.load_data_from_csv(csv_path)
+
+        if len(questions) < 10:
+            return "Não há exemplos suficientes no CSV para treinar o modelo. Aguarde mais entradas."
+
+        dataset = CustomDataset(self.tokenizer, questions, answers)
+        dataloader = DataLoader(dataset, batch_size=2, shuffle=True)
+        optimizer = AdamW(self.model.parameters(), lr=5e-5)
+        self.model.train()
+
+        for epoch in range(3):
+            for batch in dataloader:
+                input_ids = batch['input_ids'].to(self.device)
+                attention_mask = batch['attention_mask'].to(self.device)
+                labels = batch['labels'].to(self.device)
+
+                outputs = self.model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+                loss = outputs.loss
+                loss.backward()
+                optimizer.step()
+                optimizer.zero_grad()
+
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+        
+        # Salva o modelo após o fine-tuning
+        self.model.save_pretrained(save_path)
+        self.tokenizer.save_pretrained(save_path)
+        return "Modelo ajustado e salvo com sucesso."
+
+    def load_data_from_csv(self, csv_path):
+        questions = []
+        answers = []
+        with open(csv_path, mode='r', newline='', encoding='utf-8') as file:
+            reader = csv.reader(file)
+            next(reader)  # Ignora o cabeçalho
+            for row in reader:
+                if len(row) < 2:
+                    continue
+                
+                questions.append(row[0].strip('" '))
+                answers.append(row[1].strip('" '))
+        return questions, answers
+
+    def search_in_csv(self, question):
+        with open('data/faq_devs.csv', mode='r', newline='', encoding='utf-8') as file:
+            reader = csv.reader(file)
+            for row in reader:
+                if not row or len(row) < 2:
+                    continue
+                
+                if row[0].strip('" ').lower() == question.strip().lower():
+                    return row[1].strip('" ')
+        return None

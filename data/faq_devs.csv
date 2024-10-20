@@ -107,3 +107,4 @@ Pergunta,Resposta
 "Como utilizar o Prisma no Node.js?","Prisma é um ORM que simplifica o trabalho com bancos de dados. Configure o Prisma com schema.prisma e use métodos do cliente gerado para consultas."
 "O que é o Svelte?","Svelte é um framework JavaScript que compila seus componentes em código otimizado para o navegador, sem usar virtual DOM."
 "O que é o JSON?","JSON (JavaScript Object Notation) é um formato leve de troca de dados, amplamente usado para comunicação entre cliente e servidor."
+"oi","oi"

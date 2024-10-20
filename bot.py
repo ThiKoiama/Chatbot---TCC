@@ -7,11 +7,15 @@ class Bot:
         self.dialogflow_service = DialogflowService()
 
     def handle_message(self, user_message):
+        # Comando para alternar entre o modelo base e o fine-tuned
+        if user_message.startswith("alternarModelo"):
+            return self.nlp_service.switch_model()
+        
         # Se a mensagem começa com 'dialogflow', a resposta virá do Dialogflow
         if user_message.startswith("dialogflow;"):
-            # Remove o comando e usa o Dialogflow para gerar a resposta
             command, message = user_message.split(';', 1)
             return self.dialogflow_service.detect_intent_text(message)
+        
         # Se for um comando de treinamento
         elif user_message.startswith("treinarmodelo;"):
             parts = user_message.split(';')
@@ -21,6 +25,7 @@ class Bot:
                 return self.nlp_service.train_with_input(question, answer)
             else:
                 return "Formato inválido. Use: treinarmodelo; pergunta; resposta"
+        
         else:
             # Gera a resposta usando o modelo NLP/ML
             return self.nlp_service.generate_answer(user_message)

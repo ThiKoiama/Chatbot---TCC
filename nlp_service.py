@@ -76,7 +76,7 @@ class NLPService:
         optimizer = AdamW(self.model.parameters(), lr=5e-5)
         self.model.train()
 
-        for epoch in range(3):
+        for epoch in range(10):
             for batch in dataloader:
                 input_ids = batch['input_ids'].to(self.device)
                 attention_mask = batch['attention_mask'].to(self.device)
